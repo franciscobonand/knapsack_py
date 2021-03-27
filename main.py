@@ -2,85 +2,21 @@
 
 import os
 import time
-
-def sort_tuple_list(tupl):
-    return tupl[1]/tupl[0]
-
-class State(object):
-    def __init__(self, level, benefit, weight, token, data_sorted, max_wt):
-        # token = list marking if a task is token. ex. [1, 0, 0] means
-        # item0 token, item1 non-token, item2 non-token
-        # available = list marking all tasks available, i.e. not explored yet
-        self.level = level
-        self.benefit = benefit
-        self.weight = weight
-        self.token = token
-        self.ub = State.upperbound(self.token[:self.level]+[1]*(len(data_sorted)-level), data_sorted, max_wt)
-
-    @staticmethod
-    def upperbound(available, data_sorted, max_wt):  # define upperbound using fractional knaksack
-        upperbound = 0  # initial upperbound
-        # accumulated weight used to stop the upperbound summation
-        remaining = max_wt
-        for avail, (wei, val) in zip(available, data_sorted):
-            wei2 =  wei * avail  # i could not find a better name
-            if wei2 <= remaining:
-                remaining -= wei2
-                upperbound += val * avail
-            else:
-                upperbound += val * remaining / wei2
-                break
-        return upperbound
-
-    def develop(self, data_sorted, max_wt):
-        level = self.level + 1
-        weight, value = data_sorted[self.level]
-        left_weight = self.weight + weight
-        if left_weight <= max_wt:  # if not overweighted, give left child
-            left_benefit = self.benefit + value
-            left_token = self.token[:self.level]+[1]+self.token[level:]
-            left_child = State(level, left_benefit, left_weight, left_token, data_sorted, max_wt)
-        else:
-            left_child = None
-        # anyway, give right child
-        right_child = State(level, self.benefit, self.weight, self.token, data_sorted, max_wt)
-        return ([] if left_child is None else [left_child]) + [right_child]
-
-
-def doStuff(max_wt, wt_list, val_list):
-    data_sorted = sorted(zip(wt_list, val_list), key=sort_tuple_list, reverse=True)
-
-    Root = State(0, 0, 0, [0] * len(data_sorted), data_sorted, max_wt)  # start with nothing
-    waiting_States = []  # list of States waiting to be explored
-    current_state = Root
-    while current_state.level < len(data_sorted):
-        waiting_States.extend(current_state.develop(data_sorted, max_wt))
-        # sort the waiting list based on their upperbound
-        waiting_States.sort(key=lambda x: x.ub)
-        # explore the one with largest upperbound
-        current_state = waiting_States.pop()
-
-    return current_state.benefit
-
-def kp_bt(max_wt, wt_list, val_list, n_items): 
-    # Caso quando a capacidade da mochila ou o peso total buscado são 0
-    if n_items == 0 or max_wt == 0 :
-        return 0
-    
-    # Caso o último item da lista exceda o valor total, ele é removido das opções válidas 
-    if wt_list[n_items-1] > max_wt : 
-        return kp_bt(max_wt, wt_list, val_list, n_items-1)
-    else:
-        # Peso atingido quando inclui-se item da lista
-        wt_with_item = val_list[n_items-1] + kp_bt(max_wt-wt_list[n_items-1], wt_list, val_list, n_items-1)
-        # Peso atingido quando item da lista não é incluído
-        wt_without_item = kp_bt(max_wt, wt_list, val_list, n_items-1)
-
-        return max(wt_with_item, wt_without_item) 
+import knapsack
 
 if __name__ == "__main__":
-    student = "Francisco Bonome Andrade"
-    reg = "2016006450"
+    # tenta abrir arquivo .txt contendo nome do aluno na primeira linha
+    # e número de matrícula na segunda. Caso não encontre o arquivo, coloca
+    # valor padrão para nome e número de matrícula.
+    try:
+        with open("aluno.txt") as f:
+            student_data = f.read().splitlines()
+    except:
+        student_data = ["NomeDoAluno", "NumeroMatricula"]
+
+
+    student = student_data[0]
+    reg = student_data[1]
     dirpath, _, filenames = next(os.walk("tests/"))
 
     csv = open("result.csv", "w+")
@@ -103,14 +39,15 @@ if __name__ == "__main__":
             wt.append(float(w))
 
         start_bt = time.time()
-        bt_result = kp_bt(bag_capacity, wt, val, total_items)
+        bt_result = knapsack.backtracking(bag_capacity, wt, val, total_items)
         end_bt =  (time.time() - start_bt)
 
         csv.write(f"{fname};{student};{reg};backtracking;{end_bt};{bt_result}\n")
 
+        # por algum motivo esse teste em específico está gerando um loop infinito
         if fname != "f8_l-d_kp_23_10000":
             start_bnb = time.time()
-            bnb_result = doStuff(bag_capacity, wt, val)
+            bnb_result = knapsack.branch_n_bound(bag_capacity, wt, val)
             end_bnb =  (time.time() - start_bnb)
         else:
             start_bnb = 0.0
