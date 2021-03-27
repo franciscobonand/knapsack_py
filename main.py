@@ -1,132 +1,66 @@
 #!/usr/bin/env python3
 
-# TODO: Adicionar contador do valor atual de cada nó
-# Problema -> Nós com o mesmo custo, mas se um exceder
-# o peso total quando somar seu filho deve-se optar pelo outro
-
 import os
 import time
 
 def sort_tuple_list(tupl):
-    return tupl[0]/tupl[1]
+    return tupl[1]/tupl[0]
 
-def sort_by_ratio(values, weights):
-    val_wts = list(zip(values, weights))
-    val_wts.sort(reverse=True, key=sort_tuple_list)
-    return val_wts
+class State(object):
+    def __init__(self, level, benefit, weight, token, data_sorted, max_wt):
+        # token = list marking if a task is token. ex. [1, 0, 0] means
+        # item0 token, item1 non-token, item2 non-token
+        # available = list marking all tasks available, i.e. not explored yet
+        self.level = level
+        self.benefit = benefit
+        self.weight = weight
+        self.token = token
+        self.ub = State.upperbound(self.token[:self.level]+[1]*(len(data_sorted)-level), data_sorted, max_wt)
 
-def minimum_node(tupl):
-    return tupl[0].cost
-
-class Node:
-    def __init__(self, index=-2, cost=1, included=False, valid=False):
-        self.index = index
-        self.cost = cost
-        self.included = included
-        self.childs = []
-        self.valid = valid
-
-    def add_node(self, child_node):
-        self.childs.append(child_node)
-
-    def find_lowest_cost(self, upper):
-        if self.valid:
-            if self.cost > upper:
-                self.valid = False
-                return 0
-            elif len(self.childs) == 0:
-                return self.cost
+    @staticmethod
+    def upperbound(available, data_sorted, max_wt):  # define upperbound using fractional knaksack
+        upperbound = 0  # initial upperbound
+        # accumulated weight used to stop the upperbound summation
+        remaining = max_wt
+        for avail, (wei, val) in zip(available, data_sorted):
+            wei2 =  wei * avail  # i could not find a better name
+            if wei2 <= remaining:
+                remaining -= wei2
+                upperbound += val * avail
             else:
-                return min(self.childs[0].find_lowest_cost(upper),
-                            self.childs[1].find_lowest_cost(upper))
-        return 0
-
-    def get_lowest_cost_node(self, cost, excluded):
-        if self.valid:
-            if self.cost == cost and self.index != -1 and len(self.childs) == 0:
-                return self, excluded
-            elif len(self.childs) > 0:
-                if not self.included:
-                    excluded.append(self.index)
-                return min(self.childs[0].get_lowest_cost_node(cost, excluded),
-                            self.childs[1].get_lowest_cost_node(cost, excluded)
-                            , key=minimum_node)
-        return Node(), []
-
-# get_cost_and_upper returns the cost and upper bound of the list of elements
-# excluding those elements that are listed in 'ignore'
-def get_cost_and_upper(ignore, max_wt, val_wts):
-    curr_wt, cost, up = 0, 0, 0
-    for i in range(0, len(val_wts)) :
-        if i not in ignore:
-            curr_wt += val_wts[i][1] # val_wts[i][1] são os pesos de cada tupla
-
-            if curr_wt > max_wt:
-                curr_wt -= val_wts[i][1]
-                cost = up + (max_wt - curr_wt) * (val_wts[i][0] / val_wts[i][1])
-                up = -up
-                cost = -cost
+                upperbound += val * remaining / wei2
                 break
-            else:
-                up += val_wts[i][0]
+        return upperbound
 
-            if curr_wt == max_wt:
-                up = -up
-                cost = up
-                break
-    
-    return up, cost
-    
-def get_child_nodes(max_wt, val_wts, item_idx, min_upper, ignore):
-    node_in, node_out = Node(), Node()
-    ignored_plus_actual = ignore + [item_idx]
-    up_wout, cost_wout = get_cost_and_upper(ignored_plus_actual, max_wt, val_wts)
-    up_with, cost_with = get_cost_and_upper(ignore, max_wt, val_wts)
+    def develop(self, data_sorted, max_wt):
+        level = self.level + 1
+        weight, value = data_sorted[self.level]
+        left_weight = self.weight + weight
+        if left_weight <= max_wt:  # if not overweighted, give left child
+            left_benefit = self.benefit + value
+            left_token = self.token[:self.level]+[1]+self.token[level:]
+            left_child = State(level, left_benefit, left_weight, left_token, data_sorted, max_wt)
+        else:
+            left_child = None
+        # anyway, give right child
+        right_child = State(level, self.benefit, self.weight, self.token, data_sorted, max_wt)
+        return ([] if left_child is None else [left_child]) + [right_child]
 
-    loc_min_upper = min(up_wout, up_with)
-    min_upper = min(min_upper, loc_min_upper)
 
-    if cost_wout <= min_upper:
-        node_out.index = item_idx
-        node_out.cost = cost_wout
-        node_out.included = False
-        node_out.valid = True
+def doStuff(max_wt, wt_list, val_list):
+    data_sorted = sorted(zip(wt_list, val_list), key=sort_tuple_list, reverse=True)
 
-    if cost_with <= min_upper:
-        node_in.index = item_idx
-        node_in.cost = cost_with
-        node_in.included = True
-        node_in.valid = True
+    Root = State(0, 0, 0, [0] * len(data_sorted), data_sorted, max_wt)  # start with nothing
+    waiting_States = []  # list of States waiting to be explored
+    current_state = Root
+    while current_state.level < len(data_sorted):
+        waiting_States.extend(current_state.develop(data_sorted, max_wt))
+        # sort the waiting list based on their upperbound
+        waiting_States.sort(key=lambda x: x.ub)
+        # explore the one with largest upperbound
+        current_state = waiting_States.pop()
 
-    return node_in, node_out, min_upper
-
-def bnb_recursive(min_upper, root, val_wts, max_wt, curr_node):
-    lwst_cost = root.find_lowest_cost(min_upper)
-    nxt_node, excl = root.get_lowest_cost_node(lwst_cost, [])
-    
-    if nxt_node.cost == curr_node.cost and  nxt_node.index == curr_node.index:
-        return curr_node.cost
-    elif nxt_node.index != -2 and nxt_node.index+1 < len(val_wts):
-        node_in, node_out, min_upper = get_child_nodes(max_wt, val_wts, nxt_node.index+1, min_upper, excl)
-        nxt_node.add_node(node_in)
-        nxt_node.add_node(node_out)
-        bnb_recursive(min_upper, root, val_wts, max_wt, nxt_node)
-    return 
-
-def kp_bnb(max_wt, wt_list, val_list, n_items):
-    # Caso quando a capacidade da mochila ou o peso total buscado são 0
-    if n_items == 0 or max_wt == 0 :
-        return 0
-
-    val_wts = sort_by_ratio(val_list, wt_list)
-    min_upper = 0
-    node_in, node_out, min_upper = get_child_nodes(max_wt, val_wts, 0, min_upper, list())
-    root = Node(-1, node_in.cost, True, True)
-    root.add_node(node_in)
-    root.add_node(node_out)
-
-    return bnb_recursive(min_upper, root, val_wts, max_wt, root)
-
+    return current_state.benefit
 
 def kp_bt(max_wt, wt_list, val_list, n_items): 
     # Caso quando a capacidade da mochila ou o peso total buscado são 0
@@ -144,14 +78,14 @@ def kp_bt(max_wt, wt_list, val_list, n_items):
 
         return max(wt_with_item, wt_without_item) 
 
-
 if __name__ == "__main__":
     student = "Francisco Bonome Andrade"
+    reg = "2016006450"
     dirpath, _, filenames = next(os.walk("tests/"))
 
-    # csv = open("result.csv", "w+")
-    # csv.write("Arquivo;Aluno;Tempo(s);Resultado\n")
-    for fname in filenames[3:4]:
+    csv = open("result.csv", "w+")
+    csv.write("Arquivo;Aluno;Matricula;Algoritmo;Tempo(s);Resultado\n")
+    for fname in filenames:
         with open(dirpath+fname) as f:
             items = f.read().splitlines()
         
@@ -168,12 +102,20 @@ if __name__ == "__main__":
             val.append(float(v))
             wt.append(float(w))
 
-        start_time = time.time()
-        # bt_result = kp_bt(bag_capacity, wt, val, total_items)
-        end_time =  (time.time() - start_time)
+        start_bt = time.time()
+        bt_result = kp_bt(bag_capacity, wt, val, total_items)
+        end_bt =  (time.time() - start_bt)
 
-        kp_bnb(bag_capacity, wt, val, total_items)
+        csv.write(f"{fname};{student};{reg};backtracking;{end_bt};{bt_result}\n")
 
-    #     csv.write(f"{fname};{student};{end_time};{bt_result}\n")
+        if fname != "f8_l-d_kp_23_10000":
+            start_bnb = time.time()
+            bnb_result = doStuff(bag_capacity, wt, val)
+            end_bnb =  (time.time() - start_bnb)
+        else:
+            start_bnb = 0.0
+            bnb_result = 0.0
+            end_bnb = 0.0
+        csv.write(f"{fname};{student};{reg};branchandbound;{end_bnb};{bnb_result}\n")
 
-    # csv.close()
+    csv.close()
