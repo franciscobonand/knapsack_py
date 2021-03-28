@@ -35,6 +35,7 @@ def branch_n_bound(max_wt, wt_list, val_list):
 
 class Node(object):
     def __init__(self, level, total_value, weight, done, val_wts, max_wt):
+        # level representa em qual "camada" da árvore o nó se encontra
         self.level = level
         self.total_value = total_value
         self.weight = weight
@@ -64,13 +65,14 @@ class Node(object):
         level = self.level + 1
         weight, value = val_wts[self.level]
         left_weight = self.weight + weight
-        if left_weight <= max_wt:  # if not overweighted, give left child
+        # se a adição do item não extrapolar o peso total, retorna o nó da esquerda
+        if left_weight <= max_wt:
             left_total_value = self.total_value + value
             left_done = self.done[:self.level]+[1]+self.done[level:]
             left_child = Node(level, left_total_value, left_weight, left_done, val_wts, max_wt)
         else:
             left_child = None
-        # anyway, give right child
+        # nó direito é adicionado de qualquer forma (já que não acrescenta peso à capacidade)
         right_child = Node(level, self.total_value, self.weight, self.done, val_wts, max_wt)
         return ([] if left_child is None else [left_child]) + [right_child]
 

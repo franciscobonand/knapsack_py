@@ -17,10 +17,10 @@ if __name__ == "__main__":
 
     student = student_data[0]
     reg = student_data[1]
-    dirpath, _, filenames = next(os.walk("tests/"))
-
     csv = open("result.csv", "w+")
     csv.write("Arquivo;Aluno;Matricula;Algoritmo;Tempo(s);Resultado\n")
+
+    dirpath, _, filenames = next(os.walk("tests/"))
     for fname in filenames:
         with open(dirpath+fname) as f:
             items = f.read().splitlines()
@@ -50,7 +50,6 @@ if __name__ == "__main__":
             bnb_result = knapsack.branch_n_bound(bag_capacity, wt, val)
             end_bnb =  (time.time() - start_bnb)
         else:
-            start_bnb = 0.0
             bnb_result = 0.0
             end_bnb = 0.0
         csv.write(f"{fname};{student};{reg};branchandbound;{end_bnb};{bnb_result}\n")
